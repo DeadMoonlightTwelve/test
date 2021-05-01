@@ -6,7 +6,7 @@ access = ""
 secret = ""
 
 ticker = ['KRW-BTC', 'KRW-ETH', 'KRW-XRP', 'KRW-DOGE']
-k = 0.4
+k = 0.5
 
 
 def get_target_price(ticker):
@@ -28,7 +28,7 @@ def get_ma(ticker):
     """4시간 이동 평균선 조회"""
     df = pyupbit.get_ohlcv(ticker, interval="minute60", count=5)
     ma = df['close'].rolling(4).mean().shift(1)
-    return ma
+    return ma[-1]
 
 
 def get_balance(ticker):
@@ -74,7 +74,7 @@ while True:
             ma = get_ma("KRW-BTC")
             current_price = get_current_price("KRW-BTC")
             avr_buy_price = get_avg_buy_price("BTC")
-            if avr_buy_price * 1.031 < current_price or avr_buy_price * 0.97 > current_price:
+            if avr_buy_price * 1.03 < current_price or avr_buy_price * 0.97 > current_price:
                 btc = get_balance("BTC")
                 if btc > 0.00008:
                     upbit.sell_market_order("KRW-BTC", btc*0.9995)
