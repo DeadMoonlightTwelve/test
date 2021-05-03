@@ -5,8 +5,10 @@ import datetime
 access = ""
 secret = ""
 
-ticker = ['KRW-BTC', 'KRW-ETH', 'KRW-XRP', 'KRW-DOGE']
-k = 0.5
+k = 0.4
+h = 1.2
+tickers = pyupbit.get_tickers(fiat="KRW")
+bought_ticker = {}
 
 
 def get_target_price(ticker):
@@ -24,10 +26,17 @@ def get_start_time(ticker):
     return start_time
 
 
-def get_ma(ticker):
-    """4시간 이동 평균선 조회"""
-    df = pyupbit.get_ohlcv(ticker, interval="minute60", count=5)
-    ma = df['close'].rolling(4).mean().shift(1)
+def get_volume_ma(ticker):
+    """5시간 거개량 평균선 조회"""
+    df = pyupbit.get_ohlcv(ticker, interval="minute60", count=6)
+    volume = df['volume'].rolling(5).mean().shift(1)
+    return volume[-1]
+
+
+def get_price_ma(ticker):
+    """10시간 이동 평균선 조회"""
+    df = pyupbit.get_ohlcv(ticker, interval="minute60", count=11)
+    ma = df['close'].rolling(10).mean().shift(1)
     return ma[-1]
 
 
@@ -58,6 +67,12 @@ def get_current_price(ticker):
     return pyupbit.get_orderbook(tickers=ticker)[0]["orderbook_units"][0]["ask_price"]
 
 
+def get_current_volume(ticker):
+    """현재 거래량 조회"""
+    one_hour_df = pyupbit.get_ohlcv(ticker, interval="minute60", count=1)
+    return one_hour_df['volume'][0]
+
+
 # 로그인
 upbit = pyupbit.Upbit(access, secret)
 print("autotrade start")
@@ -66,26 +81,39 @@ print("autotrade start")
 while True:
     try:
         now = datetime.datetime.now()
-        start_time = get_start_time("KRW-BTC")
-        end_time = start_time + datetime.timedelta(hours=4)
 
-        if start_time < now < end_time - datetime.timedelta(seconds=20):
-            target_price = get_target_price("KRW-BTC")
-            ma = get_ma("KRW-BTC")
-            current_price = get_current_price("KRW-BTC")
-            avr_buy_price = get_avg_buy_price("BTC")
-            if avr_buy_price * 1.03 < current_price or avr_buy_price * 0.97 > current_price:
-                btc = get_balance("BTC")
-                if btc > 0.00008:
-                    upbit.sell_market_order("KRW-BTC", btc*0.9995)
-            if target_price < current_price and ma < current_price:
-                krw = get_balance("KRW")
-                if krw > 5000:
-                    upbit.buy_market_order("KRW-BTC", krw*0.9995)
+        if not bought_ticker:
+            for ticker in tickers:
+                start_time = get_start_time(ticker)
+                end_time = start_time + datetime.timedelta(hours=4)
+                if start_time < now < end_time - datetime.timedelta(seconds=30):
+                    target_price = get_target_price(ticker)
+                    price_ma = get_price_ma(ticker)
+                    current_price = get_current_price(ticker)
+                    volume_ma = get_volume_ma(ticker)
+                    current_volume = get_current_volume(ticker)
+
+                    if target_price < current_price and price_ma < current_price and volume_ma * h < current_volume:
+                        krw = get_balance("KRW")
+                        if krw > 5000:
+                            upbit.buy_market_order(ticker, krw*0.9995)
+                            bought_ticker[ticker] = True
+                time.sleep(1)
         else:
-            btc = get_balance("BTC")
-            if btc > 0.00008:
-                upbit.sell_market_order("KRW-BTC", btc*0.9995)
+            start_time = get_start_time(ticker)
+            end_time = start_time + datetime.timedelta(hours=4)
+            ticker_balance = get_balance(ticker[4:])
+            avr_buy_price = get_avg_buy_price(ticker)
+
+            if now >= end_time - datetime.timedelta(seconds=30):
+                if ticker_balance * avr_buy_price > 5000:
+                    upbit.sell_market_order(ticker, ticker_balance*0.9995)
+                    bought_ticker.pop(ticker, None)
+            if avr_buy_price * 1.04 < current_price or avr_buy_price * 0.98 > current_price:
+                if ticker_balance * avr_buy_price > 5000:
+                    upbit.sell_market_order(ticker, ticker_balance*0.9995)
+                    bought_ticker.pop(ticker, None)
+
         time.sleep(1)
     except Exception as e:
         print(e)
