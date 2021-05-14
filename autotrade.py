@@ -5,7 +5,8 @@ import datetime
 access = ""
 secret = ""
 
-k = 0.6
+k = 0.5
+h = 0.94
 tickers = ["KRW-BTC", "KRW-ETH", "KRW-BCH", "KRW-LTC", "KRW-NEO", "KRW-BTG",
            "KRW-ETC", "KRW-STRK", "KRW-LINK", "KRW-DOT", "KRW-WAVES", "KRW-FLOW"
            "KRW-QTUM", "KRW-GAS", "KRW-EOS", "KRW-OMG", "KRW-TON", "KRW-CBK",
@@ -19,6 +20,10 @@ def get_target_price(ticker):
     target_price = df.iloc[0]['close'] + \
         (df.iloc[0]['high'] - df.iloc[0]['low']) * k
     return target_price
+
+def get_high_price(ticker):
+    df = pyupbit.get_ohlcv(ticker, interval="minute240", count=1)
+    return df.iloc[0]['high']
 
 
 def get_start_time(ticker):
@@ -58,12 +63,9 @@ def get_avg_buy_price(ticker):
 def get_current_price(ticker):
     return pyupbit.get_orderbook(tickers=ticker)[0]["orderbook_units"][0]["ask_price"]
 
-
-# 로그인
 upbit = pyupbit.Upbit(access, secret)
 print("autotrade start")
 
-# 자동매매 시작
 while True:
     try:
         now = datetime.datetime.now()
@@ -72,12 +74,13 @@ while True:
             for ticker in tickers:
                 start_time = get_start_time(ticker)
                 end_time = start_time + datetime.timedelta(hours=4)
-                if start_time < now < end_time - datetime.timedelta(seconds=30):
+                if now < end_time - datetime.timedelta(minutes=10):
                     target_price = get_target_price(ticker)
                     price_ma = get_price_ma(ticker)
                     current_price = get_current_price(ticker)
+                    high_target_price = get_high_price(ticker) * h
 
-                    if target_price < current_price and price_ma < current_price:
+                    if target_price < current_price and price_ma < current_price and high_target_price < current_price:
                         krw = get_balance("KRW")
                         if krw > 5000:
                             upbit.buy_market_order(ticker, krw*0.9995)
@@ -91,7 +94,7 @@ while True:
             avr_buy_price = get_avg_buy_price(ticker[4:])
             current_price = get_current_price(ticker)
 
-            if now >= end_time:
+            if now + datetime.timedelta(seconds=30) > end_time:
                 if ticker_balance * avr_buy_price > 5000:
                     upbit.sell_market_order(ticker, ticker_balance*0.9995)
                     bought_ticker.pop(ticker, None)
